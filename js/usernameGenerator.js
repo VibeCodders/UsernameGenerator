@@ -67,6 +67,66 @@ function generateUsername(length = 8, easyRead = 70, easySay = 70) {
   return username.slice(0, length).toLowerCase();
 }
 
+const LEET_MAP = { a: '4', e: '3', i: '1', o: '0', s: '5', t: '7' };
+
+function toCamelCase(username) {
+  if (username.length < 2) return username;
+  const splitAt = Math.max(1, Math.floor(username.length / 2));
+  return (
+    username.slice(0, splitAt) +
+    username[splitAt].toUpperCase() +
+    username.slice(splitAt + 1)
+  );
+}
+
+function toLeet(username) {
+  return username
+    .split('')
+    .map((ch) => (LEET_MAP[ch] && Math.random() < 0.7 ? LEET_MAP[ch] : ch))
+    .join('');
+}
+
+function withNumbers(username) {
+  const digits = 1 + Math.floor(Math.random() * 3);
+  let suffix = '';
+  for (let i = 0; i < digits; i++) {
+    suffix += Math.floor(Math.random() * 10);
+  }
+  return username + suffix;
+}
+
+function withUnderscore(username) {
+  if (username.length < 4) return username + '_' + Math.floor(Math.random() * 100);
+  const splitAt = Math.max(1, Math.floor(username.length / 2));
+  return username.slice(0, splitAt) + '_' + username.slice(splitAt);
+}
+
+// Applies a cosmetic style on top of a base pronounceable username.
+// 'plain' returns the username unchanged (lowercase, as generated).
+function applyStyle(username, style = 'plain') {
+  switch (style) {
+    case 'numbers':
+      return withNumbers(username);
+    case 'leet':
+      return toLeet(username);
+    case 'underscore':
+      return withUnderscore(username);
+    case 'camelCase':
+      return toCamelCase(username);
+    case 'plain':
+    default:
+      return username;
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { generateUsername, mapEase, MIN_LENGTH, MAX_LENGTH, MIN_EASE, MAX_EASE };
+  module.exports = {
+    generateUsername,
+    applyStyle,
+    mapEase,
+    MIN_LENGTH,
+    MAX_LENGTH,
+    MIN_EASE,
+    MAX_EASE,
+  };
 }
