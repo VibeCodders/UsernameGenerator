@@ -70,6 +70,51 @@ function randomChar(chars) {
   return chars[Math.floor(Math.random() * chars.length)];
 }
 
+// Picks a char from `chars`, avoiding `avoid` (the last char written) when
+// an alternative exists — kills back-to-back repeats like "aa" / "ss",
+// which read/say awkwardly regardless of how common the letter is.
+function randomCharAvoiding(chars, avoid) {
+  if (chars.length <= 1 || avoid == null) return randomChar(chars);
+  const filtered = chars.filter((c) => c !== avoid);
+  return filtered.length ? randomChar(filtered) : randomChar(chars);
+}
+
+// Builds one onset-nucleus[-coda] syllable. Clusters are only ever used as
+// an onset (followed by a vowel), never dropped at the end of a syllable/word
+// — a trailing consonant cluster like "...br" has no vowel to resolve into
+// and is the main source of "unpronounceable" endings.
+function buildSyllable({ vowels, consonantPool, clusters, sayFactor, readFactor, lastChar, isFinal }) {
+  let syllable = '';
+  let last = lastChar;
+
+  const clusterChance = sayFactor * 0.3;
+  const useClusterOnset = clusters.length && Math.random() < clusterChance;
+  if (useClusterOnset) {
+    const cluster = randomChar(clusters);
+    syllable += cluster;
+    last = cluster[cluster.length - 1];
+  } else if (Math.random() < 0.9 || last == null) {
+    const c = randomCharAvoiding(consonantPool, last);
+    syllable += c;
+    last = c;
+  }
+
+  const v = randomCharAvoiding(vowels, last);
+  syllable += v;
+  last = v;
+
+  // Closed syllable (adds a trailing consonant) only mid-word, and only as
+  // "easy to read" drops below max — codas make words denser but harder to
+  // scan, so they're reserved for when the reader is allowed some friction.
+  if (!isFinal && Math.random() < readFactor * 0.35) {
+    const c = randomCharAvoiding(consonantPool, last);
+    syllable += c;
+    last = c;
+  }
+
+  return { syllable, lastChar: last };
+}
+
 function generateUsername(length = 8, easyRead = 70, easySay = 70, language = DEFAULT_LANGUAGE) {
   length = clamp(Math.floor(length) || MIN_LENGTH, MIN_LENGTH, MAX_LENGTH);
 
@@ -87,34 +132,23 @@ function generateUsername(length = 8, easyRead = 70, easySay = 70, language = DE
   const consonants = readConsonants.filter((c) => sayConsonants.includes(c));
   const consonantPool = consonants.length >= MIN_CONSONANT_POOL ? consonants : readConsonants;
   const clusters = trimPool(lang.clusters, say.trim, MIN_CLUSTER_POOL);
-  const letters = [...vowels, ...readConsonants];
 
   let username = '';
-  let nextChar = Math.random() < 0.6 ? 'consonant' : 'vowel';
+  let lastChar = null;
 
-  for (let i = 0; i < length; i++) {
-    if (Math.random() < readFactor) {
-      username += randomChar(letters);
-      nextChar = Math.random() < 0.6 ? 'consonant' : 'vowel';
-      continue;
-    }
-
-    if (nextChar === 'vowel') {
-      username += randomChar(vowels);
-      nextChar = Math.random() < 0.9 ? 'consonant' : 'vowel';
-      continue;
-    }
-
-    const clusterChance = sayFactor * 0.3;
-    if (Math.random() < clusterChance && i < length - 1) {
-      username += randomChar(clusters);
-      i++;
-      nextChar = 'vowel';
-    } else {
-      username += randomChar(consonantPool);
-      const vowelChance = 0.85 * (read.structural / 100) + 0.05;
-      nextChar = Math.random() < vowelChance ? 'vowel' : 'consonant';
-    }
+  while (username.length < length) {
+    const remaining = length - username.length;
+    const { syllable, lastChar: newLast } = buildSyllable({
+      vowels,
+      consonantPool,
+      clusters,
+      sayFactor,
+      readFactor,
+      lastChar,
+      isFinal: remaining <= 3,
+    });
+    username += syllable;
+    lastChar = newLast;
   }
 
   return username.slice(0, length).toLowerCase();
