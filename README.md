@@ -5,8 +5,12 @@ A small client-side tool that generates pronounceable, random usernames.
 ## Features
 
 - Configurable username length (1-20 characters)
-- "Ease to Read" and "Ease to Say" sliders to bias generation toward simpler
-  letter patterns or vowel/consonant clustering
+- "Ease to Read" and "Ease to Say" sliders (1-500) to bias generation toward
+  simpler letter patterns and phonotactically valid consonant clusters;
+  values above 100 progressively narrow the letter/cluster pool down to the
+  most common/easiest entries
+- Language selector (English / Italiano) that changes letter frequency and
+  valid consonant clusters used by the ease sliders
 - Copy-to-clipboard button
 - No build step or dependencies — plain HTML/CSS/JS
 

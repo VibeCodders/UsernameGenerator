@@ -3,63 +3,116 @@
  * so it can be reused (e.g. unit tested) outside the browser.
  */
 
-const VOWELS = 'aeiou';
-const CONSONANTS = 'bcdfghjklmnpqrstvwxyz';
-const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
-
 const MIN_LENGTH = 1;
 const MAX_LENGTH = 20;
 const MIN_EASE = 1;
-const MAX_EASE = 300;
+const MAX_EASE = 500;
+
+// Per-language letter pools and clusters.
+// - vowels / consonantsByReadFreq: ordered most common -> rarest (orthographic
+//   frequency), used to trim the pool as "easy to read" increases past 100.
+// - consonantsBySayEase: ordered easiest -> hardest to pronounce, used to trim
+//   the pool as "easy to say" increases past 100. Distinct from read frequency
+//   since "common on the page" isn't the same as "easy to say out loud".
+// - clusters: whitelist of real onset clusters, ordered easiest -> hardest, so
+//   it can be progressively narrowed the same way as the letter pools.
+const LANGUAGES = {
+  en: {
+    vowels: ['a', 'e', 'i', 'o', 'u'],
+    consonantsByReadFreq: ['n', 'r', 't', 's', 'l', 'd', 'c', 'm', 'p', 'h', 'g', 'b', 'f', 'y', 'w', 'k', 'v', 'x', 'z', 'j', 'q'],
+    consonantsBySayEase: ['m', 'n', 'l', 'r', 's', 't', 'd', 'p', 'b', 'f', 'g', 'h', 'k', 'v', 'w', 'y', 'c', 'j', 'x', 'q', 'z'],
+    clusters: ['bl', 'br', 'cl', 'cr', 'dr', 'fl', 'fr', 'gl', 'gr', 'pl', 'pr', 'tr', 'sl', 'sm', 'sn', 'sp', 'st', 'sw', 'sc', 'sk', 'tw', 'ch', 'sh', 'th', 'wh'],
+  },
+  it: {
+    vowels: ['a', 'e', 'i', 'o', 'u'],
+    consonantsByReadFreq: ['r', 'n', 't', 'l', 's', 'c', 'd', 'p', 'm', 'v', 'g', 'b', 'f', 'z', 'h', 'q'],
+    consonantsBySayEase: ['m', 'n', 'l', 'r', 't', 's', 'd', 'p', 'b', 'v', 'f', 'c', 'g', 'z', 'q', 'h'],
+    clusters: ['br', 'cr', 'dr', 'fr', 'gr', 'pr', 'tr', 'bl', 'cl', 'fl', 'gl', 'pl', 'sl', 'sm', 'sn', 'sp', 'st', 'sv', 'sb', 'sc', 'sd', 'sf', 'sg', 'sq', 'sr', 'gn', 'ch', 'gh'],
+  },
+};
+
+const DEFAULT_LANGUAGE = 'en';
+const MIN_VOWEL_POOL = 2;
+const MIN_CONSONANT_POOL = 5;
+const MIN_CLUSTER_POOL = 3;
+
+function getLanguage(language) {
+  return LANGUAGES[language] || LANGUAGES[DEFAULT_LANGUAGE];
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-// Maps the 1-300 slider range onto an effective 1-200 scale:
-// values above 100 give a diminishing "extra boost" instead of a 1:1 increase.
-function mapEase(value) {
-  if (value <= 100) return value;
-  return 100 + (value - 100) / 2;
+// Splits the 1-MAX_EASE slider range into two drivers:
+// - structural (1-100): same role as the original algorithm — probability of
+//   random letters vs. vowel/consonant pattern, and of attempting a cluster.
+// - trim (0-1): how aggressively the letter/cluster pools get narrowed down
+//   to only the most common/easiest entries as the value climbs past 100.
+function splitEase(value) {
+  const v = clamp(Math.floor(value) || MIN_EASE, MIN_EASE, MAX_EASE);
+  return {
+    structural: Math.min(v, 100),
+    trim: clamp(v - 100, 0, MAX_EASE - 100) / (MAX_EASE - 100),
+  };
+}
+
+// Drops the rarest/hardest entries off the tail of a frequency/ease-ordered
+// pool, never going below minSize.
+function trimPool(orderedPool, trim, minSize) {
+  const droppable = orderedPool.length - minSize;
+  if (droppable <= 0) return orderedPool;
+  const dropCount = Math.floor(trim * droppable);
+  return orderedPool.slice(0, orderedPool.length - dropCount);
 }
 
 function randomChar(chars) {
   return chars[Math.floor(Math.random() * chars.length)];
 }
 
-function generateUsername(length = 8, easyRead = 70, easySay = 70) {
+function generateUsername(length = 8, easyRead = 70, easySay = 70, language = DEFAULT_LANGUAGE) {
   length = clamp(Math.floor(length) || MIN_LENGTH, MIN_LENGTH, MAX_LENGTH);
-  easyRead = mapEase(clamp(Math.floor(easyRead) || MIN_EASE, MIN_EASE, MAX_EASE));
-  easySay = mapEase(clamp(Math.floor(easySay) || MIN_EASE, MIN_EASE, MAX_EASE));
 
-  const readFactor = (100 - Math.min(easyRead, 100)) / 100;
-  const sayFactor = (100 - Math.min(easySay, 100)) / 100;
+  const lang = getLanguage(language);
+  const read = splitEase(easyRead);
+  const say = splitEase(easySay);
+
+  const readFactor = (100 - read.structural) / 100;
+  const sayFactor = (100 - say.structural) / 100;
+
+  const vowels = trimPool(lang.vowels, read.trim, MIN_VOWEL_POOL);
+  const readConsonants = trimPool(lang.consonantsByReadFreq, read.trim, MIN_CONSONANT_POOL);
+  const sayConsonants = trimPool(lang.consonantsBySayEase, say.trim, MIN_CONSONANT_POOL);
+  // Consonants actually used for generation must be easy on both axes at once.
+  const consonants = readConsonants.filter((c) => sayConsonants.includes(c));
+  const consonantPool = consonants.length >= MIN_CONSONANT_POOL ? consonants : readConsonants;
+  const clusters = trimPool(lang.clusters, say.trim, MIN_CLUSTER_POOL);
+  const letters = [...vowels, ...readConsonants];
 
   let username = '';
   let nextChar = Math.random() < 0.6 ? 'consonant' : 'vowel';
 
   for (let i = 0; i < length; i++) {
     if (Math.random() < readFactor) {
-      username += randomChar(LETTERS);
+      username += randomChar(letters);
       nextChar = Math.random() < 0.6 ? 'consonant' : 'vowel';
       continue;
     }
 
     if (nextChar === 'vowel') {
-      username += randomChar(VOWELS);
+      username += randomChar(vowels);
       nextChar = Math.random() < 0.9 ? 'consonant' : 'vowel';
       continue;
     }
 
     const clusterChance = sayFactor * 0.3;
     if (Math.random() < clusterChance && i < length - 1) {
-      username += randomChar(CONSONANTS);
+      username += randomChar(clusters);
       i++;
-      username += randomChar(CONSONANTS);
       nextChar = 'vowel';
     } else {
-      username += randomChar(CONSONANTS);
-      const vowelChance = 0.85 * (Math.min(easyRead, 100) / 100) + 0.05;
+      username += randomChar(consonantPool);
+      const vowelChance = 0.85 * (read.structural / 100) + 0.05;
       nextChar = Math.random() < vowelChance ? 'vowel' : 'consonant';
     }
   }
@@ -123,7 +176,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     generateUsername,
     applyStyle,
-    mapEase,
+    splitEase,
+    LANGUAGES,
     MIN_LENGTH,
     MAX_LENGTH,
     MIN_EASE,

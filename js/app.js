@@ -2,6 +2,7 @@
   const lengthInput = document.getElementById('length');
   const countInput = document.getElementById('count');
   const styleSelect = document.getElementById('style');
+  const languageSelect = document.getElementById('language');
   const easyReadInput = document.getElementById('easyRead');
   const easyReadValue = document.getElementById('easyReadValue');
   const easySayInput = document.getElementById('easySay');
@@ -220,9 +221,10 @@
 
     showError('');
     const style = styleSelect.value;
+    const language = languageSelect.value;
     const usernames = [];
     for (let i = 0; i < count; i++) {
-      const base = generateUsername(length, Number(easyReadInput.value), Number(easySayInput.value));
+      const base = generateUsername(length, Number(easyReadInput.value), Number(easySayInput.value), language);
       usernames.push(applyStyle(base, style));
     }
 
